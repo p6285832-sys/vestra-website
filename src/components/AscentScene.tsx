@@ -90,6 +90,8 @@ function useParticleData() {
     const converge: THREE.Vector3[] = [];
     const colors: THREE.Color[] = [];
     const phases: number[] = [];
+    // Per-particle base sizes for varied point sizes
+    const baseSizes: number[] = [];
 
     for (let i = 0; i < COUNT; i++) {
       scatter.push(
@@ -122,6 +124,8 @@ function useParticleData() {
       const roll = rand();
       colors.push(roll > 0.66 ? WHITE : roll > 0.33 ? SILVERBLUE : BLUE);
       phases.push(rand() * Math.PI * 2);
+      // Vary base size slightly per particle: 0.12–0.22
+      baseSizes.push(0.12 + rand() * 0.10);
     }
 
     const nodeIndices: number[] = [];
@@ -151,7 +155,7 @@ function useParticleData() {
       }
     }
 
-    return { scatter, trajectory, converge, colors, phases, edges };
+    return { scatter, trajectory, converge, colors, phases, baseSizes, edges };
   }, [curve]);
 }
 
@@ -172,7 +176,7 @@ function computeSceneLookTarget(p: number, out: THREE.Vector3) {
 }
 
 function ParticleNetwork() {
-  const { scatter, trajectory, converge, colors, phases, edges } = useParticleData();
+  const { scatter, trajectory, converge, colors, phases, baseSizes, edges } = useParticleData();
   const texture = useMemo(() => getStarTexture(), []);
   const pointsRef = useRef<THREE.Points>(null);
   const groupRef = useRef<THREE.Group>(null);
@@ -188,6 +192,15 @@ function ParticleNetwork() {
         arr[i * 3 + 1] = colors[i].g;
         arr[i * 3 + 2] = colors[i].b;
       }
+      return arr;
+    })()
+  ).current;
+
+  // Per-particle sizes buffer — allows twinkling via size animation
+  const sizeArray = useRef<Float32Array>(
+    (() => {
+      const arr = new Float32Array(COUNT);
+      for (let i = 0; i < COUNT; i++) arr[i] = baseSizes[i];
       return arr;
     })()
   ).current;
@@ -224,6 +237,9 @@ function ParticleNetwork() {
     const positions = pointsRef.current?.geometry.attributes.position as
       | THREE.BufferAttribute
       | undefined;
+    const sizes = pointsRef.current?.geometry.attributes.size as
+      | THREE.BufferAttribute
+      | undefined;
 
     for (let i = 0; i < COUNT; i++) {
       const homeX = scatter[i].x * w1 + trajectory[i].x * w2 + converge[i].x * w3;
@@ -249,20 +265,27 @@ function ParticleNetwork() {
       posArray[i * 3] = ox;
       posArray[i * 3 + 1] = oy;
       posArray[i * 3 + 2] = homeZ;
+
+      // Twinkling: size oscillates ±20% of base using phase offset
+      // Frequency varies slightly per particle for organic feel
+      const twinkle = 0.80 + 0.20 * Math.sin(t * (1.1 + phases[i] * 0.08) + phases[i]);
+      sizeArray[i] = baseSizes[i] * twinkle;
     }
 
-    if (positions) {
-      positions.needsUpdate = true;
-    }
+    if (positions) positions.needsUpdate = true;
+    if (sizes) sizes.needsUpdate = true;
 
-    edges.forEach(([a, b], idx) => {
-      edgePositions[idx * 6] = posArray[a * 3];
+    // Use plain for-loop instead of forEach — avoids closure allocation every frame
+    for (let idx = 0; idx < edges.length; idx++) {
+      const a = edges[idx][0];
+      const b = edges[idx][1];
+      edgePositions[idx * 6]     = posArray[a * 3];
       edgePositions[idx * 6 + 1] = posArray[a * 3 + 1];
       edgePositions[idx * 6 + 2] = posArray[a * 3 + 2];
       edgePositions[idx * 6 + 3] = posArray[b * 3];
       edgePositions[idx * 6 + 4] = posArray[b * 3 + 1];
       edgePositions[idx * 6 + 5] = posArray[b * 3 + 2];
-    });
+    }
     const edgeGeom = lineRef.current?.geometry;
     if (edgeGeom) {
       edgeGeom.attributes.position.needsUpdate = true;
@@ -288,13 +311,14 @@ function ParticleNetwork() {
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[posArray, 3]} />
           <bufferAttribute attach="attributes-color" args={[colorArray, 3]} />
+          <bufferAttribute attach="attributes-size" args={[sizeArray, 1]} />
         </bufferGeometry>
         <pointsMaterial
           size={0.17}
           map={texture}
           vertexColors
           transparent
-          opacity={0.9}
+          opacity={0.92}
           depthWrite={false}
           blending={THREE.AdditiveBlending}
           sizeAttenuation
@@ -365,7 +389,12 @@ function CameraRig() {
       15 * w1 + 10.5 * w2 + (CONVERGE_CENTER.z + 8) * w3
     );
 
-    camera.position.lerp(target.current, 0.05);
+    // Adaptive lerp: faster response when scrolling quickly, smoother at rest.
+    // Clamped between 0.03 (idle) and 0.09 (fast scroll) for cinematic weight.
+    const vel = scrollState.velocity ?? 0;
+    const lerpFactor = THREE.MathUtils.clamp(0.03 + vel * 0.037, 0.03, 0.09);
+
+    camera.position.lerp(target.current, lerpFactor);
     camera.lookAt(computeSceneLookTarget(p, lookTargetScratch.current));
   });
 
@@ -376,8 +405,10 @@ export default function AscentScene() {
   return (
     <>
       <color attach="background" args={["#05070d"]} />
-      <fog attach="fog" args={["#05070d", 16, 36]} />
-      <ambientLight intensity={0.4} />
+      {/* Extended fog depth: [18,40] vs original [16,36] — deeper atmospheric perspective */}
+      <fog attach="fog" args={["#05070d", 18, 40]} />
+      {/* Cool cobalt-tinted ambient light at 0.6 — premium, slightly cooler scene tone */}
+      <ambientLight intensity={0.6} color={"#8ab4f8"} />
       <ParticleNetwork />
       <ArrowReinforcement />
       <CameraRig />

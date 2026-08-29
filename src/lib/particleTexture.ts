@@ -3,8 +3,8 @@ import * as THREE from "three";
 let starCache: THREE.Texture | null = null;
 
 /**
- * A crisp point sprite: small bright core, tight fast falloff.
- * Reads as a fine star/data-point, not a soft blur.
+ * A crisp point sprite: tiny bright core, steep fast falloff.
+ * Reads as a precise financial data-point, not a soft nebula blob.
  */
 export function getStarTexture(): THREE.Texture {
   if (starCache) return starCache;
@@ -17,9 +17,11 @@ export function getStarTexture(): THREE.Texture {
 
   const c = size / 2;
   const gradient = ctx.createRadialGradient(c, c, 0, c, c, c);
+  // Tight core plateau only to 15%, then steep falloff → sharp data-point look
   gradient.addColorStop(0, "rgba(255,255,255,1)");
-  gradient.addColorStop(0.32, "rgba(255,255,255,1)");
-  gradient.addColorStop(0.6, "rgba(255,255,255,0.35)");
+  gradient.addColorStop(0.15, "rgba(255,255,255,1)");
+  gradient.addColorStop(0.45, "rgba(255,255,255,0.28)");
+  gradient.addColorStop(0.75, "rgba(255,255,255,0.04)");
   gradient.addColorStop(1, "rgba(255,255,255,0)");
 
   ctx.fillStyle = gradient;

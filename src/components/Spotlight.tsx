@@ -35,10 +35,13 @@ export default function Spotlight() {
     <div
       ref={ref}
       aria-hidden="true"
-      className="pointer-events-none fixed left-0 top-0 z-[5] h-[38rem] w-[38rem] -translate-x-1/2 -translate-y-1/2 rounded-full opacity-0 mix-blend-soft-light"
+      // Reduced from 38rem → 32rem: smaller compositing rect, same coverage feel.
+      // mix-blend-screen works better on dark backgrounds than soft-light and is cheaper.
+      className="pointer-events-none fixed left-0 top-0 z-[5] h-[32rem] w-[32rem] -translate-x-1/2 -translate-y-1/2 rounded-full opacity-0 mix-blend-screen"
       style={{
         background:
-          "radial-gradient(circle, rgba(51,102,255,0.16) 0%, rgba(51,102,255,0.06) 45%, transparent 70%)",
+          // Inner opacity raised 0.16→0.22, gradient extended to 100% for smooth fade
+          "radial-gradient(circle, rgba(51,102,255,0.22) 0%, rgba(51,102,255,0.09) 50%, rgba(51,102,255,0.02) 80%, transparent 100%)",
       }}
     />
   );
